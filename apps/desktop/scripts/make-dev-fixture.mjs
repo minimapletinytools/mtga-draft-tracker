@@ -18,8 +18,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DraftTracker } from '@drafttracker/arena';
-import { findArenaCardDatabasePath, loadArenaCardDatabase } from '@drafttracker/cards';
-import { CardDatabase, CACHE_FILE_NAME } from '@drafttracker/cards';
+import {
+  CACHE_FILE_NAME,
+  databaseFromCache,
+  findArenaCardDatabasePath,
+  loadArenaCardDatabase,
+} from '@drafttracker/cards';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../..');
@@ -175,25 +179,25 @@ function main() {
   const arenaDb = loadArenaCardDatabase(arenaPath);
   console.log(`  ${arenaDb.size} cards`);
 
-  const scryfall = new CardDatabase(new Map());
+  // Fold Scryfall into Arena's database through the same merge the app uses,
+  // so the fixture exercises the real printing-index fallback rather than a
+  // simplified copy of it.
+  let scryfall = null;
   try {
-    const raw = JSON.parse(readFileSync(SCRYFALL_CACHE, 'utf8'));
-    const loaded = new CardDatabase(
-      new Map(
-        Object.entries(raw.cards).map(([id, tuple]) => [
-          Number(id),
-          // Reuse the package's decoder so the fixture can't drift from it.
-          decodeCard(Number(id), tuple),
-        ]),
-      ),
-    );
-    scryfall.enrichFrom(loaded);
-    console.log(`  ${scryfall.size} cards from the Scryfall cache`);
+    scryfall = databaseFromCache(JSON.parse(readFileSync(SCRYFALL_CACHE, 'utf8')));
   } catch {
+    scryfall = null;
+  }
+  if (scryfall === null) {
     console.warn('  no Scryfall cache found; the fixture will have no card art');
+  } else {
+    const upgraded = arenaDb.enrichFrom(scryfall);
+    console.log(
+      `  ${scryfall.size} cards + ${scryfall.printingCount} printings from Scryfall; ${upgraded} upgraded`,
+    );
   }
 
-  const artSet = scryfall.size > 0 ? chooseArtSet(arenaDb, scryfall) : null;
+  const artSet = scryfall !== null ? chooseArtSet(arenaDb, scryfall) : null;
   if (artSet !== null) console.log(`  building a synthetic ${artSet} draft for art coverage`);
 
   const drafts = [captured];
@@ -203,7 +207,7 @@ function main() {
   for (const draft of drafts) {
     for (const id of referencedIds(draft)) {
       const arena = arenaDb.get(id);
-      const art = scryfall.get(id);
+      const art = scryfall === null ? undefined : scryfall.get(id);
       const merged = arena === undefined ? art : { ...arena, ...(art ?? {}) };
       if (merged !== undefined) cards[id] = merged;
     }
@@ -220,12 +224,6 @@ function main() {
   console.log(
     `wrote ${path.relative(repoRoot, OUT_FILE)} (${kb} KB, ${Object.keys(cards).length} cards)`,
   );
-}
-
-// Local alias so the script doesn't have to re-export the package's internals.
-import { decodeCompactCard } from '@drafttracker/cards';
-function decodeCard(grpId, tuple) {
-  return decodeCompactCard(grpId, tuple);
 }
 
 main();

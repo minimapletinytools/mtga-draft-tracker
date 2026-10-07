@@ -38,6 +38,31 @@ export function isLand(card: CardInfo | undefined): boolean {
   return card?.typeLine.toLowerCase().includes('land') ?? false;
 }
 
+export function isBasicLand(card: CardInfo | undefined): boolean {
+  return card?.typeLine.toLowerCase().includes('basic land') ?? false;
+}
+
+/** Rarest first — the order a pack is worth scanning in. */
+const RARITY_RANK: Record<CardInfo['rarity'], number> = {
+  mythic: 0,
+  rare: 1,
+  bonus: 2,
+  special: 3,
+  uncommon: 4,
+  common: 5,
+};
+
+/**
+ * Sort key for a pack. Basic lands sink below everything (they are the pack's
+ * land slot, never a pick), and unresolved cards sit with the commons rather
+ * than jumping the queue.
+ */
+export function rarityRank(card: CardInfo | undefined): number {
+  if (card === undefined) return RARITY_RANK.common;
+  if (isBasicLand(card)) return 99;
+  return RARITY_RANK[card.rarity] ?? RARITY_RANK.common;
+}
+
 /** Splits a Scryfall mana cost into renderable pips: "{2}{W}{W}" → ["2","W","W"]. */
 export function manaPips(manaCost: string): string[] {
   const pips: string[] = [];

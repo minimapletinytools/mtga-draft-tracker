@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Draft } from '@drafttracker/core';
 import { useCardData } from '../useCardData';
+import { packCardIds } from '@drafttracker/core';
 import { draftLayout, formatTime } from '../format';
 import { PackView } from './PackView';
 import { PickRail } from './PickRail';
@@ -100,8 +101,8 @@ export function DraftView({ draft, live, cardRevision }: DraftViewProps) {
   // Resolve exactly the cards on screen, plus the pool up to this point.
   const wantedIds = useMemo(() => {
     const ids: number[] = [];
-    const pick = picks[selectedIndex];
-    if (pick !== undefined) ids.push(...pick.cardsSeen);
+    // On a wheel this is the source pack, so those cards get fetched too.
+    ids.push(...packCardIds(draft, picks[selectedIndex]));
     for (let i = 0; i <= selectedIndex; i += 1) {
       const taken = picks[i]?.picked;
       if (taken !== null && taken !== undefined) ids.push(taken);
@@ -109,7 +110,7 @@ export function DraftView({ draft, live, cardRevision }: DraftViewProps) {
     for (const entry of draft.deck?.mainDeck ?? []) ids.push(entry.grpId);
     for (const entry of draft.deck?.sideboard ?? []) ids.push(entry.grpId);
     return ids;
-  }, [picks, selectedIndex, draft.deck]);
+  }, [picks, selectedIndex, draft]);
 
   const cards = useCardData(wantedIds, cardRevision);
 
@@ -191,7 +192,7 @@ export function DraftView({ draft, live, cardRevision }: DraftViewProps) {
         </div>
 
         <div className="draft-scroll">
-          <PackView pick={selected} cards={cards} />
+          <PackView draft={draft} pick={selected} cards={cards} />
         </div>
       </main>
 

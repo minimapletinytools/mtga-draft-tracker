@@ -2,8 +2,12 @@ export {
   CACHE_VERSION,
   CardDatabase,
   databaseFromCache,
+  decodeCardFields,
   decodeCompactCard,
+  encodeCardFields,
+  printingKey,
   type CacheFileShape,
+  type CardFields,
   type CompactCard,
 } from './database.js';
 

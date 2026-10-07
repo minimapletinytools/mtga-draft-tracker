@@ -13,6 +13,135 @@ export function formatPickLabel(pack: number, pick: number): string {
   return `P${pack}P${pick}`;
 }
 
+/**
+ * Finds how many picks it takes a pack to come back round the table.
+ *
+ * This is the pod size, and it is detected rather than assumed to be eight:
+ * a draft can be six- or ten-player, and Arena's own table size isn't in the
+ * log.
+ *
+ * Detecting it once per pack matters, because it is the only reliable way to
+ * tell a wheel from a coincidence. In a well-formed draft every pack loses
+ * exactly one card per pick, so the *size* difference between any two picks is
+ * always their distance — sizes carry no information. Only the subset test
+ * does, and that gets ambiguous once a pack is down to a card or two: in a
+ * real draft, the last pick of a pack had three separate earlier picks whose
+ * cards happened to contain it. Pooling the evidence across the whole pack
+ * separates the true offset (every pair matches) from the noise (almost none).
+ *
+ * @returns the offset, or null when the pack never wheeled.
+ */
+export function detectWheelOffset(packPicks: DraftPick[]): number | null {
+  if (packPicks.length < 3) return null;
+
+  let best: { offset: number; matches: number } | null = null;
+
+  // A pack cannot return sooner than the second pick, and a wheel needs at
+  // least two sightings to be believable.
+  for (let offset = 1; offset < packPicks.length; offset += 1) {
+    let pairs = 0;
+    let matches = 0;
+
+    for (let i = offset; i < packPicks.length; i += 1) {
+      const earlier = packPicks[i - offset];
+      const current = packPicks[i];
+      if (earlier === undefined || current === undefined) continue;
+      pairs += 1;
+      if (continues(earlier, current)) matches += 1;
+    }
+
+    if (pairs < 2 || matches < 2) continue;
+    if (matches / pairs < 0.75) continue;
+    if (best === null || matches > best.matches) best = { offset, matches };
+  }
+
+  return best?.offset ?? null;
+}
+
+/** True when `current` is `earlier` with cards removed, and fewer of them. */
+function continues(earlier: DraftPick, current: DraftPick): boolean {
+  if (current.cardsSeen.length >= earlier.cardsSeen.length) return false;
+  if (earlier.cardsSeen.length === 0) return false;
+
+  const inEarlier = new Set(earlier.cardsSeen);
+  return current.cardsSeen.every((grpId) => inEarlier.has(grpId));
+}
+
+/**
+ * A pack that has been round the table and come back, and what left it.
+ *
+ * At an eight-player table your first pick comes back to you as pick nine:
+ * you opened it with 14 cards, and eight picks later six remain. That makes
+ * picks 9+ the only ones where the app can show which cards *other players*
+ * took rather than just what is left.
+ */
+export interface WheelInfo {
+  /** The earlier pick whose pack this one continues. */
+  source: DraftPick;
+  /** Cards the source pack had that this one no longer does. */
+  missing: number[];
+  /** Of those, the one this player took themselves. */
+  takenBySelf: number | null;
+}
+
+/**
+ * The earlier pick this one's pack continues, given a known table size.
+ *
+ * Returns null when the pack isn't actually a continuation of that pick,
+ * which happens if the log is missing picks — better to show nothing than to
+ * claim a card was taken when we can't see that it was.
+ */
+export function findWheelSource(
+  packPicks: DraftPick[],
+  index: number,
+  offset: number,
+): DraftPick | null {
+  const current = packPicks[index];
+  if (current === undefined || offset <= 0) return null;
+
+  const earlier = packPicks[index - offset];
+  if (earlier === undefined) return null;
+
+  return continues(earlier, current) ? earlier : null;
+}
+
+/** Wheel detail for one pick, or null when it is a freshly opened pack. */
+export function wheelInfoFor(draft: Draft, pick: DraftPick): WheelInfo | null {
+  const packPicks = sortPicks(draft.picks.filter((p) => p.pack === pick.pack));
+  const index = packPicks.findIndex((p) => p.pick === pick.pick);
+  if (index <= 0) return null;
+
+  const offset = detectWheelOffset(packPicks);
+  if (offset === null) return null;
+
+  const source = findWheelSource(packPicks, index, offset);
+  if (source === null) return null;
+
+  const remaining = new Set(pick.cardsSeen);
+  const missing = source.cardsSeen.filter((grpId) => !remaining.has(grpId));
+
+  // The card this player took out of their own pack is not something "another
+  // player took", and saying so would be actively misleading.
+  const takenBySelf =
+    source.picked !== null && missing.includes(source.picked) ? source.picked : null;
+
+  return { source, missing, takenBySelf };
+}
+
+/**
+ * Every grpId a pack view will draw for this pick.
+ *
+ * On a wheel this is the *source* pack, not what is left of it, so the caller
+ * has to ask for those cards too. Keeping this in one place is what stops the
+ * view and the card lookup from disagreeing — they did once, and cards that
+ * appeared only in the original pack rendered as bare Arena ids.
+ */
+export function packCardIds(draft: Draft, pick: DraftPick | undefined): number[] {
+  if (pick === undefined) return [];
+  const wheel = wheelInfoFor(draft, pick);
+  return wheel === null ? [...pick.cardsSeen] : [...wheel.source.cardsSeen];
+}
+
 /** Sorts in-place-safe order: pack ascending, then pick ascending. */
 export function sortPicks(picks: DraftPick[]): DraftPick[] {
   return [...picks].sort((a, b) => (a.pack - b.pack) || (a.pick - b.pick));

@@ -8,7 +8,11 @@ import {
   CACHE_VERSION,
   CardDatabase,
   databaseFromCache,
+  decodeCardFields,
   decodeCompactCard,
+  fingerprintKeys,
+  printingKey,
+  type CardFields,
   type CompactCard,
 } from './database.js';
 
@@ -34,6 +38,18 @@ export interface LoadCardDatabaseOptions {
   /** Progress, throttled to ~10 updates/second. */
   onProgress?: (state: CardDbState) => void;
   signal?: AbortSignal;
+  /**
+   * Restrict the printing index to these "SET:collectorNumber" keys.
+   *
+   * Only printings Scryfall has no `arena_id` for are indexed, so this is what
+   * keeps the cache at ~8 MB instead of ~42 MB. Pass
+   * `CardDatabase.allPrintingKeys()` from the Arena database. Omitting it
+   * indexes everything, which is correct but large.
+   *
+   * A cache built for a different key set is treated as stale and rebuilt, so
+   * the index follows Arena's card pool as new sets arrive.
+   */
+  wantedPrintings?: ReadonlySet<string>;
 }
 
 /** The subset of a Scryfall bulk card object we keep. */
@@ -119,23 +135,43 @@ function colorLetters(card: RawBulkCard): string {
   return '';
 }
 
-/** Folds a raw Scryfall card into the compact tuple, or null if not Arena-legal. */
-function toCompactCard(card: RawBulkCard): { grpId: number; tuple: CompactCard } | null {
-  const arenaId = card.arena_id;
-  if (typeof arenaId !== 'number' || !Number.isFinite(arenaId)) return null;
-
+/**
+ * Folds a raw Scryfall card into the compact tuple.
+ *
+ * A card is kept if it has an `arena_id` (indexed by grpId) *or* a set code
+ * and collector number (indexed as a printing). Dropping the second kind is
+ * what used to make a set Scryfall had already published — at prerelease —
+ * look like it didn't exist, purely because its Arena ids hadn't landed yet.
+ */
+function toCompactCard(
+  card: RawBulkCard,
+): { grpId: number | null; printing: string | null; tuple: CompactCard } | null {
   const name = str(card.name);
   if (name.length === 0) return null;
+
+  const rawArenaId = card.arena_id;
+  const grpId =
+    typeof rawArenaId === 'number' && Number.isFinite(rawArenaId) ? Math.trunc(rawArenaId) : null;
+
+  const setCode = str(card.set).toUpperCase();
+  const collectorNumber = str(card.collector_number);
+  const printing =
+    setCode.length > 0 && collectorNumber.length > 0
+      ? printingKey(setCode, collectorNumber)
+      : null;
+
+  if (grpId === null && printing === null) return null;
 
   const images = imageUris(card);
 
   return {
-    grpId: Math.trunc(arenaId),
+    grpId,
+    printing,
     tuple: [
       name,
       str(card.set_name),
-      str(card.set).toUpperCase(),
-      str(card.collector_number),
+      setCode,
+      collectorNumber,
       str(card.mana_cost),
       num(card.cmc),
       colorLetters(card),
@@ -231,6 +267,7 @@ export async function fetchCardDatabase(
   fetchImpl: typeof fetch,
   onProgress: (state: CardDbState) => void,
   signal?: AbortSignal,
+  wantedPrintings?: ReadonlySet<string>,
 ): Promise<CardDatabase> {
   onProgress({
     phase: 'checking',
@@ -252,6 +289,7 @@ export async function fetchCardDatabase(
   const knownTotal = totalBytes !== null && Number.isFinite(totalBytes) ? totalBytes : null;
 
   const cards = new Map<number, CardInfo>();
+  const printings = new Map<string, CardFields>();
   let lastReport = 0;
   let received = 0;
 
@@ -272,7 +310,17 @@ export async function fetchCardDatabase(
   const add = (raw: RawBulkCard): void => {
     const compact = toCompactCard(raw);
     if (compact === null) return;
-    cards.set(compact.grpId, decodeCompactCard(compact.grpId, compact.tuple));
+
+    // A card with an arena_id is already reachable by grpId; indexing it as a
+    // printing too would only duplicate it.
+    if (compact.grpId !== null) {
+      cards.set(compact.grpId, decodeCompactCard(compact.grpId, compact.tuple));
+      return;
+    }
+
+    if (compact.printing === null) return;
+    if (wantedPrintings !== undefined && !wantedPrintings.has(compact.printing)) return;
+    printings.set(compact.printing, decodeCardFields(compact.tuple));
   };
 
   report('downloading', true);
@@ -321,7 +369,9 @@ export async function fetchCardDatabase(
     throw new Error('Scryfall bulk data contained no Arena cards');
   }
 
-  const database = new CardDatabase(cards).withUpdatedAt(target.updatedAt);
+  const database = new CardDatabase(cards, printings)
+    .withUpdatedAt(target.updatedAt)
+    .withPrintingKeys(wantedPrintings === undefined ? '' : fingerprintKeys(wantedPrintings));
   onProgress({
     phase: 'ready',
     receivedBytes: received,
@@ -367,13 +417,25 @@ async function writeCache(cacheDir: string, database: CardDatabase): Promise<voi
 export async function loadCardDatabase(
   options: LoadCardDatabaseOptions,
 ): Promise<CardDatabase> {
-  const { cacheDir, forceRefresh = false, fetchImpl = globalThis.fetch, onProgress, signal } = options;
+  const {
+    cacheDir,
+    forceRefresh = false,
+    fetchImpl = globalThis.fetch,
+    onProgress,
+    signal,
+    wantedPrintings,
+  } = options;
 
   const report = onProgress ?? ((): void => {});
 
+  // A cache built for a different set of wanted keys predates a change in
+  // Arena's card pool, so its printing index is missing entries we now need.
+  const wantedFingerprint =
+    wantedPrintings === undefined ? '' : fingerprintKeys(wantedPrintings);
+
   if (!forceRefresh) {
     const cached = await readCache(cacheDir);
-    if (cached !== null) {
+    if (cached !== null && cached.printingKeys === wantedFingerprint) {
       report({
         phase: 'ready',
         receivedBytes: 0,
@@ -387,7 +449,7 @@ export async function loadCardDatabase(
   }
 
   try {
-    const database = await fetchCardDatabase(fetchImpl, report, signal);
+    const database = await fetchCardDatabase(fetchImpl, report, signal, wantedPrintings);
     await writeCache(cacheDir, database);
     return database;
   } catch (err) {

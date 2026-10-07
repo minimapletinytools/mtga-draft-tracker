@@ -1,4 +1,5 @@
-import type { DraftPick } from '@drafttracker/core';
+import { useMemo } from 'react';
+import { detectWheelOffset, findWheelSource, type DraftPick } from '@drafttracker/core';
 
 interface PickRailProps {
   picks: DraftPick[];
@@ -14,8 +15,25 @@ interface PickRailProps {
  *
  * This is the "go through the history" surface: clicking a cell jumps the pack
  * view to that pick, so a whole draft can be replayed one pick at a time.
+ *
+ * Picks whose pack has already been round the table are marked, because those
+ * are the ones where the view can show what other players took.
  */
 export function PickRail({ picks, packs, selectedIndex, onSelect, liveAtEnd }: PickRailProps) {
+  // Which picks are wheels, resolved per pack rather than per rendered cell.
+  const wheels = useMemo(() => {
+    const map = new Set<string>();
+    for (const pack of packs) {
+      const inPack = picks.filter((pick) => pick.pack === pack);
+      const offset = detectWheelOffset(inPack);
+      if (offset === null) continue;
+      inPack.forEach((pick, index) => {
+        if (findWheelSource(inPack, index, offset) !== null) map.add(`${pick.pack}:${pick.pick}`);
+      });
+    }
+    return map;
+  }, [picks, packs]);
+
   return (
     <nav className="rail" aria-label="Picks">
       {packs.map((pack) => {
@@ -37,9 +55,12 @@ export function PickRail({ picks, packs, selectedIndex, onSelect, liveAtEnd }: P
               {packPicks.map(({ pick, index }) => {
                 const selected = index === selectedIndex;
                 const pending = pick.picked === null;
+                const isWheel = wheels.has(`${pick.pack}:${pick.pick}`);
+
                 const classes = ['rail-cell'];
                 if (selected) classes.push('is-selected');
                 if (pending) classes.push('is-pending');
+                if (isWheel) classes.push('is-wheel');
                 if (liveAtEnd && index === picks.length - 1) classes.push('is-live');
 
                 return (
@@ -49,12 +70,16 @@ export function PickRail({ picks, packs, selectedIndex, onSelect, liveAtEnd }: P
                       className={classes.join(' ')}
                       onClick={() => onSelect(index)}
                       aria-current={selected ? 'step' : undefined}
-                      title={`Pack ${pick.pack}, pick ${pick.pick} — ${pick.cardsSeen.length} cards seen`}
+                      title={`Pack ${pick.pack}, pick ${pick.pick}${
+                        isWheel ? ' — this pack has been round the table' : ''
+                      }`}
                     >
                       <span className="rail-cell-pick">{pick.pick}</span>
-                      <span className="rail-cell-meta">
-                        {pending ? '—' : `${pick.cardsSeen.length} seen`}
-                      </span>
+                      {isWheel ? (
+                        <span className="rail-cell-wheel" aria-hidden="true">
+                          ↩
+                        </span>
+                      ) : null}
                     </button>
                   </li>
                 );

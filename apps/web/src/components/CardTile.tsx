@@ -11,6 +11,10 @@ interface CardTileProps {
   picked?: boolean;
   /** Draws a "not yet picked" marker on the pack's still-open pick. */
   pending?: boolean;
+  /** Greys the card out — used for cards that have left the pack. */
+  dimmed?: boolean;
+  /** A short factual label in the corner, e.g. who took a missing card. */
+  cornerNote?: string | null;
   /** Copies owned, shown on pool tiles. */
   count?: number;
   onClick?: () => void;
@@ -31,6 +35,8 @@ export function CardTile({
   size = 'pack',
   picked = false,
   pending = false,
+  dimmed = false,
+  cornerNote = null,
   count,
   onClick,
   title,
@@ -38,6 +44,7 @@ export function CardTile({
   const classes = ['tile', `tile-${size}`];
   if (picked) classes.push('is-picked');
   if (pending) classes.push('is-pending');
+  if (dimmed) classes.push('is-dimmed');
   if (card === undefined) classes.push('is-unknown');
 
   const label = card?.name ?? `Card ${grpId}`;
@@ -80,6 +87,7 @@ export function CardTile({
       ) : null}
 
       {count !== undefined && count > 1 ? <span className="tile-count">×{count}</span> : null}
+      {cornerNote !== null ? <span className="tile-corner-note">{cornerNote}</span> : null}
       {picked ? <span className="tile-badge">Picked</span> : null}
       {pending ? <span className="tile-badge tile-badge-pending">Choosing…</span> : null}
       {card !== undefined && size === 'pack' ? (

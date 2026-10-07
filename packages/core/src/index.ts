@@ -17,6 +17,8 @@ export type {
   TrackerStatus,
 } from './types.js';
 
+export type { WheelInfo } from './draft.js';
+
 export type { AppPaths, DraftTrackerBridge } from './bridge.js';
 
 export {
@@ -24,9 +26,12 @@ export {
   emptyDraft,
   findPick,
   formatPickLabel,
+  detectWheelOffset,
+  findWheelSource,
   humanizeEventName,
   inferSetCode,
   lastSlot,
+  packCardIds,
   packSize,
   pickKey,
   pickedCards,
@@ -36,4 +41,5 @@ export {
   sortPicks,
   summarizeDraft,
   totalPicked,
+  wheelInfoFor,
 } from './draft.js';

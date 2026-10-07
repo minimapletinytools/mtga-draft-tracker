@@ -248,6 +248,9 @@ async function setupCardDatabase(forceRefresh = false): Promise<CardDbState> {
     const scryfall = await loadCardDatabase({
       cacheDir: cardDataDir(),
       forceRefresh,
+      // Scoping the printing index to Arena's own card pool is what keeps the
+      // cache near 8 MB; unscoped it is ~42 MB.
+      wantedPrintings: cardDatabase?.allPrintingKeys(),
       // Progress is reported in bytes; the card count stays whatever the app
       // can actually resolve right now, which is what the UI displays.
       onProgress: (state) =>
