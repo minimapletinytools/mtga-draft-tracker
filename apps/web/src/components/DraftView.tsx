@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { Draft } from '@drafttracker/core';
 import { useCardData } from '../useCardData';
 import { packCardIds } from '@drafttracker/core';
 import { draftLayout, formatTime } from '../format';
+import {
+  CARD_SCALE_STEP,
+  DEFAULT_CARD_SCALE,
+  MAX_CARD_SCALE,
+  MIN_CARD_SCALE,
+  loadCardScale,
+  saveCardScale,
+} from '../prefs';
 import { PackView } from './PackView';
 import { PickRail } from './PickRail';
 import { PoolPanel } from './PoolPanel';
@@ -26,6 +34,12 @@ export function DraftView({ draft, live, cardRevision }: DraftViewProps) {
 
   // Which pick the user is looking at. Null means "follow the newest pick".
   const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
+
+  // Card size is a display preference, so it survives switching drafts.
+  const [cardScale, setCardScale] = useState(loadCardScale);
+  useEffect(() => {
+    saveCardScale(cardScale);
+  }, [cardScale]);
 
   // A draft can gain picks while it is open; follow the end unless pinned.
   const lastIndex = picks.length - 1;
@@ -117,8 +131,12 @@ export function DraftView({ draft, live, cardRevision }: DraftViewProps) {
   const selected = picks[selectedIndex];
   const taken = picks.filter((pick) => pick.picked !== null).length;
 
+  // Drives the grid track sizes from CSS; 100% is the size the layout was
+  // designed at, so nothing moves until the slider does.
+  const scaleStyle = { '--card-scale': String(cardScale / 100) } as CSSProperties;
+
   return (
-    <div className="draft-view">
+    <div className="draft-view" style={scaleStyle}>
       <PickRail
         picks={picks}
         packs={packs}
@@ -166,6 +184,8 @@ export function DraftView({ draft, live, cardRevision }: DraftViewProps) {
             </button>
           </div>
 
+          <CardSizeSlider value={cardScale} onChange={setCardScale} />
+
           <div className="draft-progress">
             <span className="draft-progress-label">
               {taken} of {picks.length} picks
@@ -198,5 +218,45 @@ export function DraftView({ draft, live, cardRevision }: DraftViewProps) {
 
       <PoolPanel picks={picks} cards={cards} upToIndex={selectedIndex} deck={draft.deck} />
     </div>
+  );
+}
+
+/**
+ * Card size for the pack and pool grids.
+ *
+ * 100% is the size the layout was designed at; the readout doubles as a reset
+ * so getting back to it never needs a careful drag.
+ */
+function CardSizeSlider({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  const isDefault = value === DEFAULT_CARD_SCALE;
+
+  return (
+    <label className="card-size" title="Card size in the pack and pool">
+      <span className="card-size-label">Card size</span>
+      <input
+        type="range"
+        min={MIN_CARD_SCALE}
+        max={MAX_CARD_SCALE}
+        step={CARD_SCALE_STEP}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        aria-label="Card size"
+      />
+      <button
+        type="button"
+        className={isDefault ? 'card-size-value' : 'card-size-value is-changed'}
+        onClick={() => onChange(DEFAULT_CARD_SCALE)}
+        disabled={isDefault}
+        title={isDefault ? 'Card size' : 'Reset to 100%'}
+      >
+        {value}%
+      </button>
+    </label>
   );
 }

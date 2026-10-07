@@ -155,6 +155,11 @@ in `packages/core/src/bridge.ts`, which main, preload and renderer all import.
 The pick rail marks wheel picks with a ↩, and each pack shows how many picks
 have been made out of it.
 
+A **card size** slider in the draft toolbar scales the pack and pool grids from
+50% to 200%. 100% is the size the layout was designed at and the default; the
+percentage doubles as a reset button once you move it. The setting is stored in
+`localStorage`, so it survives reloads and applies to saved drafts too.
+
 Navigating away from the newest pick stops auto-follow; "Jump to latest"
 resumes it.
 

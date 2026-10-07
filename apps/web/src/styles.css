@@ -285,6 +285,8 @@ button {
 /* ------------------------------------------------------------------ draft */
 
 .draft-view {
+  /* Set by the card-size slider; 1 is the size this layout was designed at. */
+  --card-scale: 1;
   display: grid;
   grid-template-columns: 128px minmax(0, 1fr) 360px;
   height: 100%;
@@ -542,8 +544,9 @@ button {
   display: grid;
   /* Capped track widths rather than 1fr: a pack is 14 cards, and letting each
      tile grow to fill the row pushes most of the pack below the fold. */
-  grid-template-columns: repeat(auto-fill, minmax(118px, 142px));
-  gap: 12px;
+  grid-template-columns:
+    repeat(auto-fill, minmax(calc(118px * var(--card-scale)), calc(142px * var(--card-scale))));
+  gap: calc(12px * var(--card-scale));
   justify-content: start;
 }
 
@@ -578,7 +581,7 @@ button {
   display: flex;
   justify-content: center;
   margin-top: 18px;
-  max-width: 190px;
+  max-width: calc(190px * var(--card-scale));
   margin-inline: auto;
 }
 
@@ -841,8 +844,9 @@ button {
 
 .pool-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 100px));
-  gap: 8px;
+  grid-template-columns:
+    repeat(auto-fill, minmax(calc(84px * var(--card-scale)), calc(100px * var(--card-scale))));
+  gap: calc(8px * var(--card-scale));
   justify-content: start;
 }
 
@@ -1141,6 +1145,80 @@ button {
 .rarity-special,
 .rarity-bonus {
   background: #b58ee0;
+}
+
+/* ------------------------------------------------------------ card size */
+
+.card-size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.card-size-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.card-size input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 110px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.card-size input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  border: 1px solid var(--border-strong);
+  cursor: grab;
+}
+
+.card-size input[type='range']:hover::-webkit-slider-thumb,
+.card-size input[type='range']:focus-visible::-webkit-slider-thumb {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.card-size input[type='range']:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.card-size-value {
+  min-width: 42px;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  cursor: default;
+}
+
+.card-size-value.is-changed {
+  color: var(--accent);
+  border-color: rgba(224, 163, 62, 0.35);
+  cursor: pointer;
+}
+
+.card-size-value.is-changed:hover {
+  background: var(--accent-soft);
 }
 
 /* ---------------------------------------------------------------- scroll */
