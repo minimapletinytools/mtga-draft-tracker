@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    // Lets `tsc --noEmit` and vitest resolve workspace packages straight to
+    // source, so typechecking works on a fresh clone with nothing built.
+    // Build configs clear this so emitted code links against dist/ instead.
+    "paths": {
+      "@drafttracker/core": ["./packages/core/src/index.ts"],
+      "@drafttracker/arena": ["./packages/arena/src/index.ts"],
+      "@drafttracker/cards": ["./packages/cards/src/index.ts"]
+    }
+  }
+}

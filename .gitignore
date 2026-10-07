@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+.cache/
+.screenshots/
+# Arena's Player.log is huge and machine-specific…
+*.log
+# …but the captured excerpt the arena tests replay is a checked-in fixture.
+!packages/arena/test/fixtures/*.log
+
+.DS_Store
